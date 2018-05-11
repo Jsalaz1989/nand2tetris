@@ -1,1 +1,0 @@
-infoStruct parse(FILE *inptr);
