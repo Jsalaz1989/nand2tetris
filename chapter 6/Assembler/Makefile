@@ -3,7 +3,7 @@ CC = clang
 
 
 # Flags to pass compiler
-CFLAGS = -I$(HDRDIR) -I$(OBJDIR) -fsanitize=signed-integer-overflow -fsanitize=undefined -ggdb3 -O0 -Qunused-arguments -std=c11 -Wall -Werror -Wextra -Wno-sign-compare -Wshadow # -ansi  # -pedantic
+CFLAGS = -g -I$(HDRDIR) -I$(OBJDIR) -fsanitize=signed-integer-overflow -fsanitize=undefined -ggdb3 -O0 -Qunused-arguments -std=c11 -Wall -Werror -Wextra -Wno-sign-compare -Wshadow # -ansi  # -pedantic
 LDFLAGS =
 
 
@@ -26,13 +26,6 @@ OBJS    = $(patsubst $(SRCDIR)/%.c,$(OBJDIR)/%.o,$(SRCS))
 LIBS =
 
 
-# space-separated list of header files
-#HDRS = structs.h functions.h parse.h convert.h printFunctions.h converter.h
-
-
-# if more than one src directory?
-#SRCDIRS = $(shell find $(SRCDIR) -type d | sed 's/$(SRCDIR)/./g' )
-
 
 
 # default target
@@ -40,22 +33,17 @@ $(EXE): $(OBJS) $(HDRS) Makefile
 	$(CC) $(CFLAGS) -o $@ $(OBJS) $(LIBS)
 
 
+$(OBJDIR)/%.o: $(SRCDIR)/%.c
+	$(CC) $(CFLAGS) -c $< -o $@
+
 
 # dependencies
 $(OBJS): $(HDRS) Makefile
 
 
-
-$(OBJDIR)/%.o: $(SRCDIR)/%.c
-	$(CC) $(CFLAGS) -c $< -o $@
-
-
-
-
 # housekeeping
 clean:
 	$(RM) $(OBJS)
-#	rm -f core $(EXE) *.o
 
 
 distclean: clean
