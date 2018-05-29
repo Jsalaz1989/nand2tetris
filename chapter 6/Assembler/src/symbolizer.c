@@ -1,18 +1,29 @@
+/*
+
+Resolves symbols in a Hack assembly program.
+
+Stores predefined symbols, labels, and user symbols in a hash table with their corresponding RAM or instruction address.
+
+*/
+
+
+
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 #include <math.h>
-
-#include "structs.h"
-#include "functions.h"
 #include "parse.h"
-#include "printFunctions.h"
+#include "symbolizer.h"
 
 
 #define HASH_TABLE_SIZE 5
 
 
-unsigned int hashFunction(char *symbol, int tableSize)
+tableNode *hashTable[HASH_TABLE_SIZE];
+
+
+// Simple hash function returning a string's corresponding hash value between 0 and HASH_TABLE_SIZE
+unsigned int hashFunction(char *symbol)
 {
     if (symbol != NULL)
     {
@@ -23,17 +34,49 @@ unsigned int hashFunction(char *symbol, int tableSize)
         for (i = 0; symbol[i] != '\0'; i++)
             sum = sum + symbol[i];
 
-        return hashReturn = sum % tableSize;
+        return hashReturn = sum % HASH_TABLE_SIZE;
     }
 
-    return tableSize+1;
+    return 0;
 }
 
 
+// Creates a hash table node and fills it with a symbol and an address
+void pushTable(tableNode *head, char *symbol, int address)
+{  
+    tableNode *current = head;
+    
+    // Find the end of the list
+    while (current->next != NULL)
+        current = current->next;
 
-void initializeHashTable(entryNode *hashTable[], int tableSize)
+    // Now we can add a new variable
+    current->next = malloc(sizeof(tableNode));
+    if (current->next == NULL)
+        fprintf(stderr, "Could not malloc current->next. \n");
+	
+	// Copy symbol to new pointer in case old pointer is free'd			
+	char *symbol2 = malloc(strlen(symbol)+1);
+	symbol2 = strcpy(symbol2, symbol);
+    
+    // Fill new node with the symbol and address
+    current->next->symbol = symbol2;
+    current->next->address = address;
+    current->next->next = NULL;
+}
+
+
+// Create a hash table to contain symbols and their adddress and fill with predefined symbols
+void initializeHashTable(void)
 {
+    // Ensure all pointers start as null
     int i;
+    for (i = 0; i < HASH_TABLE_SIZE; i++)
+    {
+        hashTable[i] = NULL;
+    }
+
+	// Hardcode predefined symbols and their address into hash table
     for (i = 0; i < 23; i++)
     {
         char *symbol = NULL;
@@ -156,237 +199,315 @@ void initializeHashTable(entryNode *hashTable[], int tableSize)
         }
 
 
-        entryNode *current = NULL;
-        current = malloc(sizeof(entryNode));
-        if (current == NULL)
-            fprintf(stderr, "Could not create head of list.\n");
-        current->symbol = symbol;
-        current->address = address;
-        current->next = NULL;
-
-        unsigned int hashValue = hashFunction(symbol, tableSize);
-
+        unsigned int hashValue = hashFunction(symbol);
+        
+        // On first occurence of hash value start a list for that hash value, otherwise push onto existing list
         if (hashTable[hashValue] == NULL)
-            hashTable[hashValue] = current;
+        {
+            // Create a new list of table nodes
+            hashTable[hashValue] = malloc(sizeof(tableNode));
+		    if (hashTable[hashValue] == NULL)
+		        fprintf(stderr, "Could not malloc . \n");
+
+			// Copy symbol to new pointer in case old pointer is free'd			
+			char *symbol2 = malloc(strlen(symbol)+1);
+			symbol2 = strcpy(symbol2, symbol);
+	
+	    	// Fill new node with the symbol and address
+			hashTable[hashValue]->symbol = symbol2;
+		    hashTable[hashValue]->address = address;
+		    hashTable[hashValue]->next = NULL;
+        }
         else
-            push2(hashTable[hashValue], current->symbol, current->address);
-    }
-}
-
-
-
-_Bool searchHashTable(entryNode *hashTable[], int tableSize, char needle[])
-{
-    int i;
-    for (i = 0; i < tableSize; i++)
-    {
-        if (hashTable[i] != NULL)
         {
-            entryNode *current = hashTable[i];
-
-            while (current != NULL && current->symbol != NULL && needle != NULL)
-            {
-                if(strcmp(current->symbol, needle) == 0)
-                {
-                    return 1;
-                }
-
-                current = current->next;
-            }
-        }
+            pushTable(hashTable[hashValue], symbol, address);
+		}
     }
-
-    return 0;
 }
 
-void addSymbol(char *symbol, int address, entryNode *hashTable[], int tableSize)
+
+// Return true if a hash table contains a symbol, return false if symbol not found
+int searchHashTable(char *needle)
 {
-    unsigned int hashValue = hashFunction(symbol, tableSize);
-
-    push2(hashTable[hashValue], symbol, address);
-
-    entryNode *current = hashTable[hashValue];
-    while (current->next != NULL)
+    unsigned int hashValue = hashFunction(needle);
+    tableNode *current = hashTable[hashValue];
+   
+   	// Iterate through list searching for the symbol
+	while (current != NULL)
+	{	
+		// If symbol is found, return true
+	    if (strcmp(current->symbol, needle) == 0)
+		   	return 1;
+		
         current = current->next;
-}
-
-
-void addLabelSymbols(FILE *inFile, entryNode* hashTable[])
-{
-    int instructionNum = 0;
-
-    while (getc(inFile) != EOF)
-    {
-        infoStruct solutions = parse(inFile);
-
-        if (solutions.instructionType == 1)
-        {
-            if (searchHashTable(hashTable, HASH_TABLE_SIZE, solutions.label) == 0)
-            {
-                int address = instructionNum;
-
-                addSymbol(solutions.label, address, hashTable, HASH_TABLE_SIZE);
-            }
-        }
-
-        if (solutions.instructionType != 1)
-            instructionNum++;
     }
-}
-
-
-void addUserSymbols(FILE *inFile, entryNode* hashTable[], int tableSize)
-{
-    int availableRAMaddress = 16;
-
-    while (getc(inFile) != EOF)
-    {
-        infoStruct solutions = parse(inFile);
-
-        // Search for symbol in A-instruction, to be stored in head node
-        if (solutions.userSymbol != NULL)
-        {
-            if (searchHashTable(hashTable, tableSize, solutions.userSymbol) == 0)
-            {
-                addSymbol(solutions.userSymbol, availableRAMaddress, hashTable, tableSize);
-
-                availableRAMaddress++;
-            }
-        }
-    }
-}
-
-
-int getSymbolAddress(entryNode *hashTable[], int tableSize, char needle[])
-{
-    int i;
-    for (i = 0; i < tableSize; i++)
-    {
-        if (hashTable[i] != NULL)
-        {
-            entryNode *current = hashTable[i];
-
-            while (current != NULL)
-            {
-                if(strcmp(current->symbol, needle) == 0)
-                {
-                    //printf("%s found \n", needle);
-                    return current->address;
-                }
-
-                current = current->next;
-            }
-        }
-    }
-
+    
+    // Symbol was not found
     return 0;
 }
 
 
-void replaceSymbols(FILE *inFile, FILE *outFile, entryNode *hashTable[], int tableSize)
+// Search for labels in the program and add them to the hash table with their corresponding instruction number
+void addLabelSymbols(void)
 {
-    char currentChar = getc(inFile);
-    while (currentChar != EOF)
+    // Open spaceless file 
+    FILE *spaceLessFile1 = fopen("spaceLess1.txt", "r");
+    if (spaceLessFile1 == NULL)
+        fprintf(stderr, "Could not open spaceless file 1. \n");
+
+
+    int instructionNum = 0;		// keeps track of current instruction number
+
+	// Iterate through file searching for labels and assigning its corresponding instruction number
+    while (getc(spaceLessFile1) != EOF)
     {
-        infoStruct solutions = parse(inFile);
-        //printFields(solutions);
+    	fseek(spaceLessFile1, -1, SEEK_CUR);	// undo forward seek of previous getc()
+    	
+        instrComponents instructionComponents = parse(spaceLessFile1);		// parse current line
 
-        if (solutions.instructionType == 0)
-        {
-            if (solutions.userSymbol != NULL)
-            {
-                putc('@', outFile);
-
-                if (searchHashTable(hashTable, tableSize, solutions.userSymbol))
-                {
-                    int address = getSymbolAddress(hashTable, HASH_TABLE_SIZE, solutions.userSymbol);
-                    fprintf(outFile, "%i", address);
-                    fprintf(outFile, "\n");
-                }
-            }
-            else if (solutions.value != NULL)
-            {
-                putc('@', outFile);
-                fprintf(outFile, "%s", solutions.value);
-                fprintf(outFile, "\n");
-            }
+        // If line is a label, push it onto hash table with its corresponding instruction number
+        if (strlen(instructionComponents.label) != 0)
+        {     			  			
+    		unsigned int hashValue = hashFunction(instructionComponents.label);
+    		pushTable(hashTable[hashValue], instructionComponents.label, instructionNum);
         }
-        else if (solutions.instructionType == 1)
-        {
-          //  currentChar = getc(inFile);
-            //printf("out of loop currentChar = %c \n", currentChar);
-            //while (currentChar != '@' || )
-            //{
-
-              //  currentChar = getc(inFile);
-                //printf("in loop currentChar = %c \n", currentChar);
-
-
-                // do nothing
-                // maybe print newline?
-        //    }
-        }
-        else if (solutions.instructionType == 2)
-        {
-            if (strlen(solutions.dest) != 0)
-            {
-                fprintf(outFile, "%s", solutions.dest);
-                putc('=', outFile);
-            }
-
-            fprintf(outFile, "%s", solutions.comp);
-
-            if (strlen(solutions.jump) != 0)
-            {
-                putc(';', outFile);
-                fprintf(outFile, "%s", solutions.jump);
-            }
-
-            putc('\n', outFile);
-        }
-
-        currentChar = getc(inFile);
+		else
+		{
+            instructionNum++;
+   		}
     }
-
-    printf("\n");
+    
+    
+    // Close spaceless file
+    fclose(spaceLessFile1);
+    spaceLessFile1 = NULL;
 }
 
 
-
-void searchAndDestroySymbols(FILE *inFile, FILE *outFile)
+// Search for user-defined symbols in the program and add them to the hash table with their corresponding RAM address
+void addUserSymbols(void)
 {
-    entryNode *hashTable[HASH_TABLE_SIZE];
+    // Open spaceless file 
+    FILE *spaceLessFile1 = fopen("spaceLess1.txt", "r");
+    if (spaceLessFile1 == NULL)
+        fprintf(stderr, "Could not open spaceless file 1. \n");
+    
+    
+    int availableRAMaddress = 16;	// keeps track of current instruction number
+
+	// Iterate through file searching for user-defined symbols and assigning its corresponding RAM address
+    while (getc(spaceLessFile1) != EOF)
+    {
+    	fseek(spaceLessFile1, -1, SEEK_CUR);	// undo forward seek of previous getc()
+    	
+        instrComponents instructionComponents = parse(spaceLessFile1);		// parse current line
+      
+        // If line is a user symbol and it is not already in the hash table, push it with its corresponding instruction number
+        if (strlen(instructionComponents.userSymbol) != 0)
+        {
+            if (searchHashTable(instructionComponents.userSymbol) == 0)
+            {              
+    			unsigned int hashValue = hashFunction(instructionComponents.userSymbol);
+    			pushTable(hashTable[hashValue], instructionComponents.userSymbol, availableRAMaddress);
+
+                availableRAMaddress++; 
+            }
+        }   
+    }
+    
+    
+    // Close spaceless file
+    fclose(spaceLessFile1);
+    spaceLessFile1 = NULL;
+}
+
+
+// Returns the address associated with a symbol
+int getSymbolAddress(char needle[])
+{
+	// Iterate through lists of hash table looking for a symbol
     int i;
     for (i = 0; i < HASH_TABLE_SIZE; i++)
     {
-        hashTable[i] = NULL;
+        if (hashTable[i] != NULL)
+        {
+            tableNode *current = hashTable[i];
+
+            while (current != NULL)
+            {
+            	// If symbol found, returns its address
+                if (strcmp(current->symbol, needle) == 0)
+                    return current->address;
+
+                current = current->next;
+            }
+        }
     }
 
-    // Initialize hash table with pre-defined symbols
-    initializeHashTable(hashTable, HASH_TABLE_SIZE);
-
-
-    // Execute an entire passthrough of the file to add labels to the symbol table
-    addLabelSymbols(inFile, hashTable);
-
-
-    // Rewind file stream for second pass-through
-    fseek(inFile, 0, SEEK_SET);
-
-    // Execute an entire passthrough of the file to add user-defined symbols to the symbol table
-    addUserSymbols(inFile, hashTable, HASH_TABLE_SIZE);
-
-
-    // Rewind file stream for final pass-through (replacement stage)
-    fseek(inFile, 0, SEEK_SET);
-
-
-    printHashTable(hashTable, HASH_TABLE_SIZE);
-
-
-    replaceSymbols(inFile, outFile, hashTable, HASH_TABLE_SIZE);
-
-    fclose(inFile);
-    fclose(outFile);
+	// Symbol not found
+    return 0;
 }
 
+
+// Copy the program to a new file, substituting every symbol with its address
+void replaceSymbols(void)
+{
+    // Open spaceless file 
+    FILE *spaceLessFile1 = fopen("spaceLess1.txt", "r");
+    if (spaceLessFile1 == NULL)
+        fprintf(stderr, "Could not open symbolLess file 1.\n");
+    
+    // Open intermediate output file to store symbolLess version
+    FILE *symbolLessFile = fopen("symbolLess.txt", "w");
+    if (symbolLessFile == NULL)
+    {
+        fclose(spaceLessFile1);
+        fprintf(stderr, "Could not create symbolLess file.\n");
+    }
+    
+	// Iterate through input file while outputting values, the value corresponding to user-defined symbols, and C-instructions
+    char currentChar = getc(spaceLessFile1);
+    while (currentChar != EOF)
+    {
+        fseek(spaceLessFile1, -1, SEEK_CUR);	// undo forward seek of previous getc()
+        
+        instrComponents instructionComponents = parse(spaceLessFile1);		// parse current line
+
+
+        if (instructionComponents.value >= 0)							// value
+        {
+        	putc('@', symbolLessFile);
+        	fprintf(symbolLessFile, "%i", instructionComponents.value);
+        	putc('\n', symbolLessFile);
+        }
+        else if (strlen(instructionComponents.userSymbol) != 0)			// user symbol
+        {
+            putc('@', symbolLessFile);
+
+            if (searchHashTable(instructionComponents.userSymbol))
+            {
+                int address = getSymbolAddress(instructionComponents.userSymbol);
+                fprintf(symbolLessFile, "%i", address);
+    			putc('\n', symbolLessFile);
+            }
+        }
+		else if (strlen(instructionComponents.comp) != 0)				// C-instruction
+        {
+		    if (strlen(instructionComponents.dest) != 0)
+		   	{
+				fprintf(symbolLessFile, "%s", instructionComponents.dest);
+				putc('=', symbolLessFile);
+			}
+			
+			fprintf(symbolLessFile, "%s", instructionComponents.comp);  
+			
+			if (strlen(instructionComponents.jump) != 0)
+			{
+			    putc(';', symbolLessFile);
+			    fprintf(symbolLessFile, "%s", instructionComponents.jump);
+			}
+			
+			putc('\n', symbolLessFile);
+		}
+		
+		
+        currentChar = getc(spaceLessFile1);
+    }
+
+	
+	// Close the spaceless file
+	fclose(spaceLessFile1);
+	spaceLessFile1 = NULL;
+	
+	// Close the symboless file
+	fclose(symbolLessFile);
+	symbolLessFile = NULL;
+}
+
+
+// Free every node in the hash table and the symbols in each node
+void freeHashTable(void)
+{
+    tableNode *current;
+    tableNode *temp;
+    
+    // Iterate over lists in hash table
+    int i;
+    for (i = 0; i < HASH_TABLE_SIZE; i++)
+    {
+        if (hashTable[i] != NULL)
+        {
+            current = hashTable[i];					// start at head of list
+            
+			while (current->next != NULL)			// loop through list
+			{
+				temp = current->next;		// save pointer to next node
+				
+				free(current->symbol);		// free symbol in current node
+				current->symbol = NULL;
+
+				free(current);				// free current node
+				current = NULL;
+				
+	        	current = temp;				// move to next node
+	        }
+	        
+			free(current->symbol);			// free symbol of last node
+			current->symbol = NULL;
+			
+			free(current);					// free last node	
+			current = NULL;	
+        }
+    }
+}
+
+
+// Substitutes any symbols with their corresponding RAM address or instruction number
+void searchAndDestroySymbols(void)
+{  
+    // Initialize hash table with predefined symbols
+    initializeHashTable();
+        
+        
+    // Execute an entire passthrough of the file to add labels to the symbol table
+    addLabelSymbols();
+
+
+    // Execute an entire passthrough of the file to add user-defined symbols to the symbol table
+    addUserSymbols();
+
+
+	// Substitute symbols with their addresses
+    replaceSymbols();
+
+
+	// Free the hash table nodes (including the string in each node)
+	freeHashTable();
+}
+
+
+// Print the contents of the hash table by hash value 
+void printHashTable(void)
+{
+    printf("Symbol\tAddress\tHash\n");
+    
+    int i;
+    for (i = 0; i < HASH_TABLE_SIZE; i++)
+    {
+		if (hashTable[i] != NULL)
+		{
+		    tableNode *current = hashTable[i];
+
+		    while (current != NULL)
+		    {
+		        unsigned int hashReturn = hashFunction(current->symbol);
+
+		        printf("%s\t%i\t%i\n", current->symbol, current->address, hashReturn);
+
+		        current = current->next;
+		    }
+		}
+    }
+    
+    printf("\n");
+}
